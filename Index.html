@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic-Tac-Toe AI</title>
+    <style>
+        /* Basic styling for the page */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column; /* Stack elements vertically */
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; /* Ensure body takes full viewport height */
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px; /* Add some padding */
+            box-sizing: border-box; /* Include padding in width/height */
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+
+        /* Styling for the game board grid */
+        #game-board {
+            display: grid;
+            /* Adjust size for potentially smaller viewports */
+            grid-template-columns: repeat(3, minmax(60px, 100px));
+            grid-template-rows: repeat(3, minmax(60px, 100px));
+            gap: 5px; /* Space between cells */
+            background-color: #666; /* Grid line color */
+            border: 5px solid #666; /* Border around the grid */
+            margin-bottom: 20px;
+            max-width: 310px; /* Prevent board from becoming too large */
+            width: 90%; /* Responsive width */
+        }
+
+        /* Styling for individual cells */
+        .cell {
+            /* Let grid define size, ensure content fills cell */
+            width: 100%;
+            height: 100%;
+            background-color: #fff;
+            border: none; /* Gap creates lines */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2.5em; /* Adjust font size relative to cell size */
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none; /* Prevent text selection */
+            transition: background-color 0.2s ease; /* Smooth hover effect */
+            box-sizing: border-box;
+        }
+
+        /* Hover effect only for empty cells */
+        .cell:not(.x):not(.o):hover {
+            background-color: #eee;
+        }
+
+        /* Styling for the 'X' mark */
+        .cell.x {
+            color: #007bff; /* Blue for X */
+        }
+
+        /* Styling for the 'O' mark */
+        .cell.o {
+            color: #dc3545; /* Red for O */
+        }
+
+        /* Optional: Highlight winning cells */
+        .cell.winning {
+            background-color: #ffc107; /* Yellow highlight */
+            color: #fff; /* White text on highlight */
+        }
+
+        /* Styling for the status message area */
+        #status-message {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #555;
+            min-height: 1.5em; /* Prevent layout shifts */
+            text-align: center;
+        }
+
+        /* Styling for the restart button */
+        #restart-button {
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #28a745; /* Green button */
+            color: white;
+            transition: background-color 0.2s ease;
+        }
+
+        #restart-button:hover {
+            background-color: #218838; /* Darker green on hover */
+        }
+
+        /* Media query for smaller screens */
+        @media (max-width: 400px) {
+            #game-board {
+                grid-template-columns: repeat(3, 1fr); /* Use fractional units */
+                grid-template-rows: repeat(3, 1fr);
+                gap: 3px;
+                border-width: 3px;
+                max-width: 95%;
+             }
+            .cell {
+                font-size: 2em;
+            }
+             h1 {
+                font-size: 1.5em;
+             }
+             #status-message {
+                font-size: 1em;
+             }
+             #restart-button {
+                padding: 8px 15px;
+                font-size: 0.9em;
+             }
+        }
+    </style>
+</head>
+<body>
+    <h1>Tic-Tac-Toe vs AI</h1>
+    <div id="game-board">
+        <div class="cell" data-index="0"></div>
+        <div class="cell" data-index="1"></div>
+        <div class="cell" data-index="2"></div>
+        <div class="cell" data-index="3"></div>
+        <div class="cell" data-index="4"></div>
+        <div class="cell" data-index="5"></div>
+        <div class="cell" data-index="6"></div>
+        <div class="cell" data-index="7"></div>
+        <div class="cell" data-index="8"></div>
+    </div>
+    <div id="status-message">Player X's turn</div>
+    <button id="restart-button">Restart Game</button>
+
+    <script>
+        // Wait for the HTML document to be fully loaded before running script
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get references to HTML elements
+            const cells = document.querySelectorAll('.cell');
+            const statusMessage = document.getElementById('status-message');
+            const restartButton = document.getElementById('restart-button');
+            const gameBoard = document.getElementById('game-board');
+
+            // Game constants
+            const PLAYER_MARK = 'X';
+            const AI_MARK = 'O';
+            // Define all possible winning lines (indices)
+            const winningCombinations = [
+                [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+                [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+                [0, 4, 8], [2, 4, 6]             // Diagonals
+            ];
+
+            // Game state variables
+            let currentPlayer;
+            let boardState; // Represents the 3x3 board, null = empty
+            let gameActive;
+
+            // --- Game Logic Functions ---
+
+            /**
+             * Checks if the specified player has won on the current board.
+             * @param {Array<string|null>} currentBoard - The current state of the board.
+             * @param {string} player - The player ('X' or 'O') to check for a win.
+             * @returns {Array<number>|null} - The winning combination indices or null if no win.
+             */
+            function checkWinner(currentBoard, player) {
+                for (const combination of winningCombinations) {
+                    const [a, b, c] = combination;
+                    if (currentBoard[a] === player && currentBoard[b] === player && currentBoard[c] === player) {
+                        return combination; // Return the winning combination indices
+                    }
+                }
+                return null; // No winner
+            }
+
+            /**
+             * Checks if the board is completely filled.
+             * @param {Array<string|null>} currentBoard - The current state of the board.
+             * @returns {boolean} - True if the board is full, false otherwise.
+             */
+            function isBoardFull(currentBoard) {
+                return currentBoard.every(cell => cell !== null);
+            }
+
+            /**
+             * Handles clicks on the game board cells.
+             * @param {Event} event - The click event object.
+             */
+            function handleCellClick(event) {
+                const clickedCell = event.target;
+                const clickedCellIndex = parseInt(clickedCell.getAttribute('data-index'));
+
+                // Ignore click if cell is already filled, game is inactive, or it's not player's turn
+                if (boardState[clickedCellIndex] !== null || !gameActive || currentPlayer !== PLAYER_MARK) {
+                    return;
+                }
+
+                // Player makes their move
+                makeMove(clickedCellIndex, PLAYER_MARK);
+
+                // Check if the game ended after the player's move
+                if (!gameActive) return;
+
+                // Switch to AI's turn
+                currentPlayer = AI_MARK;
+                statusMessage.textContent = `AI (${AI_MARK}) is thinking...`;
+                // Temporarily disable player clicks while AI "thinks"
+                gameBoard.style.pointerEvents = 'none';
+
+                // AI makes a move after a short delay for better UX
+                setTimeout(() => {
+                    aiMove();
+                    // Re-enable player clicks only if game is still active
+                    if (gameActive) {
+                        gameBoard.style.pointerEvents = 'auto';
+                    }
+                }, 700); // 700ms delay
+            }
+
+            /**
+             * Updates the board state and UI for a move. Checks for win/draw after move.
+             * @param {number} index - The index of the cell to update (0-8).
+             * @param {string} player - The player making the move ('X' or 'O').
+             */
+            function makeMove(index, player) {
+                // Proceed only if the chosen cell is empty and the game is active
+                if (boardState[index] === null && gameActive) {
+                    // Update the logical board state
+                    boardState[index] = player;
+                    // Update the visual representation on the board
+                    const cellElement = cells[index];
+                    cellElement.textContent = player;
+                    cellElement.classList.add(player.toLowerCase()); // Add 'x' or 'o' class for styling
+
+                    // Check if this move resulted in a win
+                    const winningLine = checkWinner(boardState, player);
+                    if (winningLine) {
+                        endGame(false, winningLine); // Game ends with a winner
+                    } else if (isBoardFull(boardState)) {
+                        endGame(true); // Game ends in a draw (board is full, no winner)
+                    }
+                }
+            }
+
+            /**
+             * Determines and executes the AI's move.
+             */
+            function aiMove() {
+                // Double-check if the game is still active before AI moves
+                if (!gameActive) return;
+
+                // Find the best possible move for the AI
+                const bestMove = findBestMove();
+                // Make the move if a valid one is found
+                if (bestMove !== null) {
+                    makeMove(bestMove, AI_MARK);
+                }
+
+                // Check if the game ended after AI's move (handled within makeMove)
+                if (!gameActive) return;
+
+                // If the game continues, switch back to the Player's turn
+                currentPlayer = PLAYER_MARK;
+                statusMessage.textContent = `Player ${PLAYER_MARK}'s turn`;
+            }
+
+            /**
+             * Finds the best move for the AI using a simple strategy:
+             * 1. Win if possible.
+             * 2. Block opponent's win if possible.
+             * 3. Take the center.
+             * 4. Take an available corner.
+             * 5. Take an available side.
+             * @returns {number|null} - The index of the best move, or null if no moves available.
+             */
+            function findBestMove() {
+                // 1. Check if AI can win in the next move
+                for (let i = 0; i < boardState.length; i++) {
+                    if (boardState[i] === null) { // Check only empty cells
+                        const tempBoard = [...boardState]; // Create a copy to simulate
+                        tempBoard[i] = AI_MARK;
+                        if (checkWinner(tempBoard, AI_MARK)) {
+                            return i; // Winning move found
+                        }
+                    }
+                }
+
+                // 2. Check if Player can win in the next move, and block them
+                for (let i = 0; i < boardState.length; i++) {
+                    if (boardState[i] === null) {
+                        const tempBoard = [...boardState];
+                        tempBoard[i] = PLAYER_MARK;
+                        if (checkWinner(tempBoard, PLAYER_MARK)) {
+                            return i; // Blocking move found
+                        }
+                    }
+                }
+
+                // 3. Try to take the center (index 4) if available
+                if (boardState[4] === null) {
+                    return 4;
+                }
+
+                // 4. Try to take an available corner
+                const corners = [0, 2, 6, 8];
+                const availableCorners = corners.filter(index => boardState[index] === null);
+                if (availableCorners.length > 0) {
+                    // Choose a random available corner
+                    return availableCorners[Math.floor(Math.random() * availableCorners.length)];
+                }
+
+                // 5. Try to take an available side
+                const sides = [1, 3, 5, 7];
+                const availableSides = sides.filter(index => boardState[index] === null);
+                if (availableSides.length > 0) {
+                     // Choose a random available side
+                    return availableSides[Math.floor(Math.random() * availableSides.length)];
+                }
+
+                // Fallback: If no strategic move, return the first available empty cell
+                // This should ideally not be reached in a standard Tic-Tac-Toe game if logic above is sound.
+                const availableMoves = boardState.map((val, idx) => val === null ? idx : null).filter(val => val !== null);
+                return availableMoves.length > 0 ? availableMoves[0] : null;
+            }
+
+            /**
+             * Highlights the cells that form the winning line.
+             * @param {Array<number>} combination - Array of indices of the winning cells.
+             */
+            function highlightWinningCells(combination) {
+                combination.forEach(index => {
+                    cells[index].classList.add('winning'); // Add CSS class for styling
+                });
+            }
+
+            /**
+             * Ends the current game, updates status, and optionally highlights winning cells.
+             * @param {boolean} isDraw - True if the game ended in a draw.
+             * @param {Array<number>|null} winningLine - Indices of the winning line, if any.
+             */
+            function endGame(isDraw, winningLine = null) {
+                gameActive = false; // Stop the game
+                gameBoard.style.pointerEvents = 'none'; // Disable further clicks on the board
+
+                if (isDraw) {
+                    statusMessage.textContent = "It's a draw!";
+                } else {
+                    // Announce the winner
+                    statusMessage.textContent = `${currentPlayer === PLAYER_MARK ? 'Player ' + PLAYER_MARK : 'AI (' + AI_MARK + ')'} wins!`;
+                    // Highlight the winning cells if a winner exists
+                    if (winningLine) {
+                        highlightWinningCells(winningLine);
+                    }
+                }
+            }
+
+            /**
+             * Resets the game board and state variables to start a new game.
+             */
+            function startGame() {
+                boardState = Array(9).fill(null); // Reset logical board state
+                gameActive = true;
+                currentPlayer = PLAYER_MARK; // Player 'X' always starts (can be randomized)
+                statusMessage.textContent = `Player ${PLAYER_MARK}'s turn`; // Initial status
+
+                // Reset visual board
+                cells.forEach(cell => {
+                    cell.textContent = ''; // Clear 'X' or 'O'
+                    // Remove styling classes
+                    cell.classList.remove(PLAYER_MARK.toLowerCase(), AI_MARK.toLowerCase(), 'winning');
+                });
+
+                // Ensure the board is clickable again
+                gameBoard.style.pointerEvents = 'auto';
+            }
+
+            // --- Event Listeners Setup ---
+            // Add click listener to each cell on the board
+            cells.forEach(cell => cell.addEventListener('click', handleCellClick));
+            // Add click listener to the restart button
+            restartButton.addEventListener('click', startGame);
+
+            // --- Initial Game Setup ---
+            startGame(); // Initialize the game when the script loads
+        });
+    </script>
+</body>
+</html>
